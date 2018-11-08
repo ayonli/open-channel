@@ -8,7 +8,11 @@ import { getManagerPid } from "manager-process";
 export const isWin32 = process.platform == "win32";
 export const usingPort = isWin32 && cluster.isWorker;
 
-export class IPChannel {
+export class ProcessChannel {
+    /**
+     * Whether the channel is closed, once closed, no more messages should be 
+     * sent.
+     */
     closed = false;
     private managerPid: number = void 0;
     private retries: number = 0;
@@ -17,12 +21,25 @@ export class IPChannel {
 
     constructor(private connectionListener: (socket: net.Socket) => void) { }
 
+    /** Whether the channel is connected to the internal server. */
     get connected() {
         return this.socket
             ? !this.socket.destroyed && !this.socket.connecting && !this.closed
             : false;
     }
 
+    /**
+     * Returns the status of the channel, which will either be `connecting`, 
+     * `connected` or `closed`.
+     */
+    get state(): "connecting" | "connected" | "closed" {
+        return this.connected ? "connected" : this.closed ? "closed" : "connecting";
+    }
+
+    /**
+     * Gets the socket client that will connect to the internal server.
+     * @param timeout Default value is `5000`ms.
+     */
     connect(timeout = 5000) {
         this.socket = new net.Socket();
 
@@ -33,7 +50,7 @@ export class IPChannel {
         this.socket.write = (...args) => {
             // if the connection is ready, send message immediately, otherwise
             // push them into a queue.
-            return this.connected
+            return this.state !== "connecting"
                 ? write.apply(this.socket, args)
                 : !!this.queue.push(args);
         };
@@ -82,40 +99,33 @@ export class IPChannel {
         let server = net.createServer(this.connectionListener);
 
         await new Promise(async (resolve, reject) => {
-            server.once("error", (err) => {
+            server.once("error", err => {
                 server.close();
                 server.unref();
 
-                // If the port is already in use, then throw the error, otherwise, 
-                // just return null so that the program could retry.
-                if (err["code"] == "EADDRINUSE") {
-                    reject(err);
-                } else {
-                    resolve(null);
-                }
+                // If the port is already in use, then throw the error, 
+                // otherwise, just resolve void so that the program could retry.
+                err["code"] == "EADDRINUSE" ? reject(err) : resolve();
             });
 
             if (usingPort) {
-                server.listen(() => {
-                    resolve(null);
-                });
+                // listen a random port number
+                server.listen(() => resolve());
             } else {
                 // bind to a Unix domain socket or Windows named pipe
                 let path = <string>await this.getSocketAddr(pid);
 
                 if (await fs.pathExists(path)) {
-                    // When all the connection request run asynchronously, there is 
-                    // no guarantee that this procedure will run as expected since 
-                    // anther process may delete the file before the current 
-                    // process do. So must put the 'unlink' operation in a 
-                    // try...catch block, and when fail, it will not cause the 
+                    // When all the connection request run asynchronously, there
+                    // is no guarantee that this procedure will run as expected 
+                    // since anther process may delete the file before the 
+                    // current process do. So must put the 'unlink' operation in
+                    // a try block, and when fail, it will not cause the 
                     // process to terminate.
-                    try { await fs.unlink(path); } catch (e) { }
+                    try { await fs.unlink(path); } finally { }
                 }
 
-                server.listen(path, () => {
-                    resolve(null);
-                });
+                server.listen(path, () => resolve());
             }
         });
 
@@ -130,6 +140,8 @@ export class IPChannel {
         let dir = os.tmpdir() + "/.uipc",
             file = dir + "/" + pid;
 
+        // Save the port to a temp file, so other processes can read the file to
+        // get the port and connect.
         await fs.ensureDir(dir);
         await fs.writeFile(file, port, "utf8");
     }
@@ -139,11 +151,13 @@ export class IPChannel {
             file = dir + "/" + pid;
 
         if (!usingPort) {
+            // Use domain socket on Unix and named pipe on Windows.
             await fs.ensureDir(dir);
             return !isWin32 ? file : path.join('\\\\?\\pipe', file);
         }
 
         try {
+            // read the port from temp file.
             let data = await fs.readFile(file, "utf8");
             return parseInt(data) || 0;
         } catch (err) {
@@ -165,6 +179,10 @@ export class IPChannel {
             addr = typeof _addr == "object" ? _addr.port : _addr;
             this.socket.connect(<any>addr);
         } catch (err) {
+            // Since there might be several processes trying to start the server
+            // at the same time, the current process might face an 
+            // address-in-use error, if such an error is caught. try to 
+            // connect it instead.
             if (err["code"] == "EADDRINUSE")
                 this.socket.connect(<any>addr);
         }
@@ -187,7 +205,7 @@ export class IPChannel {
  * @param timeout Default value is `5000`ms.
  */
 export function openChannel(connectionListener: (socket: net.Socket) => void) {
-    return new IPChannel(connectionListener);
+    return new ProcessChannel(connectionListener);
 }
 
 export default openChannel;

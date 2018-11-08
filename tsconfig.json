@@ -22,7 +22,6 @@
         "src/index.ts"
     ],
     "exclude": [
-        "examples/*",
         "./node_modules/*"
     ]
 }

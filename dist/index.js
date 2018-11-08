@@ -9,7 +9,7 @@ const fs = require("fs-extra");
 const manager_process_1 = require("manager-process");
 exports.isWin32 = process.platform == "win32";
 exports.usingPort = exports.isWin32 && cluster.isWorker;
-class IPChannel {
+class ProcessChannel {
     constructor(connectionListener) {
         this.connectionListener = connectionListener;
         this.closed = false;
@@ -22,13 +22,16 @@ class IPChannel {
             ? !this.socket.destroyed && !this.socket.connecting && !this.closed
             : false;
     }
+    get state() {
+        return this.connected ? "connected" : this.closed ? "closed" : "connecting";
+    }
     connect(timeout = 5000) {
         this.socket = new net.Socket();
         var write = this.socket.write;
         var destroy = this.socket.destroy;
         var maxRetries = Math.ceil(timeout / 50);
         this.socket.write = (...args) => {
-            return this.connected
+            return this.state !== "connecting"
                 ? write.apply(this.socket, args)
                 : !!this.queue.push(args);
         };
@@ -68,20 +71,13 @@ class IPChannel {
         return tslib_1.__awaiter(this, void 0, void 0, function* () {
             let server = net.createServer(this.connectionListener);
             yield new Promise((resolve, reject) => tslib_1.__awaiter(this, void 0, void 0, function* () {
-                server.once("error", (err) => {
+                server.once("error", err => {
                     server.close();
                     server.unref();
-                    if (err["code"] == "EADDRINUSE") {
-                        reject(err);
-                    }
-                    else {
-                        resolve(null);
-                    }
+                    err["code"] == "EADDRINUSE" ? reject(err) : resolve();
                 });
                 if (exports.usingPort) {
-                    server.listen(() => {
-                        resolve(null);
-                    });
+                    server.listen(() => resolve());
                 }
                 else {
                     let path = yield this.getSocketAddr(pid);
@@ -89,11 +85,9 @@ class IPChannel {
                         try {
                             yield fs.unlink(path);
                         }
-                        catch (e) { }
+                        finally { }
                     }
-                    server.listen(path, () => {
-                        resolve(null);
-                    });
+                    server.listen(path, () => resolve());
                 }
             }));
             if (exports.usingPort) {
@@ -155,9 +149,9 @@ class IPChannel {
         });
     }
 }
-exports.IPChannel = IPChannel;
+exports.ProcessChannel = ProcessChannel;
 function openChannel(connectionListener) {
-    return new IPChannel(connectionListener);
+    return new ProcessChannel(connectionListener);
 }
 exports.openChannel = openChannel;
 exports.default = openChannel;
