@@ -1,6 +1,6 @@
 "use strict";
 
-const { openChannel } = require("ipchannel");
+const { openChannel } = require(".");
 const cluster = require("cluster");
 
 var channel = openChannel(socket => {

@@ -7,27 +7,60 @@ const path = require("path");
 const cluster = require("cluster");
 const fs = require("fs-extra");
 const manager_process_1 = require("manager-process");
-const merge = require("lodash/merge");
 exports.isWin32 = process.platform == "win32";
 exports.usingPort = exports.isWin32 && cluster.isWorker;
 class IPChannel {
     constructor(connectionListener) {
         this.connectionListener = connectionListener;
-        this.autoReconnect = true;
+        this.closed = false;
+        this.retries = 0;
+        this.queue = [];
+    }
+    close() {
+        this.closed = true;
+        this.socket.destroy();
+    }
+    get connected() {
+        return this.socket
+            ? !this.socket.destroyed && !this.socket.connecting
+            : false;
     }
     connect(timeout = 5000) {
-        return tslib_1.__awaiter(this, void 0, void 0, function* () {
-            let socket = yield this.getConnection(timeout);
-            socket.on("close", () => tslib_1.__awaiter(this, void 0, void 0, function* () {
-                if (this.autoReconnect) {
-                    merge(socket, yield this.getConnection(timeout));
-                    console.log(socket);
+        this.socket = new net.Socket();
+        var write = this.socket.write;
+        var maxRetries = Math.ceil(timeout / 50);
+        this.socket.write = (...args) => {
+            return this.connected
+                ? write.apply(this.socket, args)
+                : !!this.queue.push(args);
+        };
+        this.socket.on("connect", () => {
+            this.retries = 0;
+            let args;
+            while (args = this.queue.shift()) {
+                this.socket.write.apply(this.socket, args);
+            }
+        }).on("error", (err) => tslib_1.__awaiter(this, void 0, void 0, function* () {
+            if (err["code"] == "ECONNREFUSED" || err["code"] == "ENOENT") {
+                if (this.retries < maxRetries) {
+                    this.retries++;
+                    yield this.tryConnect(this.managerPid);
                 }
-            })).on("error", (err) => {
-                console.log(err);
-            });
-            return socket;
-        });
+            }
+            else if (this.isSocketResetError(err)) {
+                this.socket.destroyed || this.socket.emit("close", true);
+            }
+        })).on("close", () => tslib_1.__awaiter(this, void 0, void 0, function* () {
+            this.managerPid = void 0;
+            try {
+                this.closed || (yield this.tryConnect());
+            }
+            catch (err) {
+                this.socket.emit("error", err);
+            }
+        }));
+        this.tryConnect();
+        return this.socket;
     }
     bind(pid) {
         return tslib_1.__awaiter(this, void 0, void 0, function* () {
@@ -90,66 +123,34 @@ class IPChannel {
             }
         });
     }
-    tryConnect(addr) {
-        return new Promise((resolve, reject) => {
-            if (!addr)
-                return resolve(null);
-            let conn = net.createConnection(addr);
-            conn.once("error", (err) => {
-                if (err["code"] == "ECONNREFUSED" || err["code"] == "ENOENT") {
-                    resolve(null);
-                }
-                else {
-                    reject(err);
-                }
-            }).once("connect", () => {
-                resolve(conn);
-            });
-        });
-    }
-    retryConnect(resolve, reject, timeout, pid) {
-        let conn, retries = 0, maxRetries = Math.ceil(timeout / 50), timer = setInterval(() => tslib_1.__awaiter(this, void 0, void 0, function* () {
-            retries++;
-            conn = yield this.getConnection(timeout, pid);
-            if (conn) {
-                resolve(conn);
-                clearInterval(timer);
-            }
-            else if (retries === maxRetries) {
-                clearInterval(timer);
-                let err = new Error("failed to get connection after "
-                    + Math.round(timeout / 1000) + " seconds timeout");
-                reject(err);
-            }
-        }), 50);
+    isSocketResetError(err) {
+        return err instanceof Error
+            && (err["code"] == "ECONNRESET"
+                || /socket.*(ended|closed)/.test(err.message));
     }
     tryServe(pid, addr) {
         return tslib_1.__awaiter(this, void 0, void 0, function* () {
             try {
-                let server = yield this.bind(pid);
-                if (server) {
-                    let _addr = server.address();
-                    addr = typeof _addr == "object" ? _addr.port : _addr;
-                    return this.tryConnect(addr);
-                }
+                let server = yield this.bind(pid), _addr = server.address();
+                addr = typeof _addr == "object" ? _addr.port : _addr;
+                this.socket.connect(addr);
             }
             catch (err) {
                 if (err["code"] == "EADDRINUSE")
-                    return this.tryConnect(addr);
-                else
-                    throw err;
+                    this.socket.connect(addr);
             }
         });
     }
-    getConnection(timeout = 5000, pid) {
-        return new Promise((resolve, reject) => tslib_1.__awaiter(this, void 0, void 0, function* () {
-            pid = pid || (yield manager_process_1.getManagerPid());
-            let addr = yield this.getSocketAddr(pid), conn;
-            conn = yield this.tryConnect(addr);
-            if (!conn && pid === process.pid)
-                conn = yield this.tryServe(pid, addr);
-            conn ? resolve(conn) : this.retryConnect(resolve, reject, timeout, pid);
-        }));
+    tryConnect(managerPid) {
+        return tslib_1.__awaiter(this, void 0, void 0, function* () {
+            managerPid = managerPid || (yield manager_process_1.getManagerPid());
+            this.managerPid = managerPid;
+            let addr = yield this.getSocketAddr(managerPid);
+            if (managerPid === process.pid)
+                yield this.tryServe(managerPid, addr);
+            else
+                this.socket.connect(addr);
+        });
     }
 }
 exports.IPChannel = IPChannel;
@@ -157,11 +158,5 @@ function openChannel(connectionListener) {
     return new IPChannel(connectionListener);
 }
 exports.openChannel = openChannel;
-function isSocketResetError(err) {
-    return err instanceof Error
-        && (err["code"] == "ECONNRESET"
-            || /socket.*(ended|closed)/.test(err.message));
-}
-exports.isSocketResetError = isSocketResetError;
 exports.default = openChannel;
 //# sourceMappingURL=index.js.map

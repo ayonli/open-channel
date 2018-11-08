@@ -4,62 +4,79 @@ import * as path from "path";
 import * as cluster from "cluster";
 import * as fs from "fs-extra";
 import { getManagerPid } from "manager-process";
-import { EventEmitter } from 'events';
 
 export const isWin32 = process.platform == "win32";
 export const usingPort = isWin32 && cluster.isWorker;
 
-export class IPChannel extends EventEmitter {
-    socket: net.Socket;
+export class IPChannel {
+    private closed = false;
+    private managerPid: number;
+    private retries: number = 0;
+    private queue: any[][] = [];
+    private socket: net.Socket;
 
-    constructor(private connectionListener: (socket: net.Socket) => void, timeout = 5000) {
-        super();
-        let _this = this;
+    constructor(private connectionListener: (socket: net.Socket) => void) { }
 
-        (async function connect() {
-            let isInit = !_this.socket;
-
-            _this.socket = await _this.getConnection(timeout);
-            _this.socket.on("connect", () => {
-                // emit connect event when the first time establish connection.
-                isInit && _this.emit("connect");
-            }).on("close", async () => {
-                // automatically re-connect when connection lost.
-                await connect();
-            }).on("error", err => {
-                if (isSocketResetError(err)) {
-                    _this.socket.destroyed || _this.socket.emit("close");
-                } else {
-                    _this.emit("error");
-                }
-            });
-        })();
-    }
-
-
-    on(event: "connect" | "close", listener: () => void): this;
-    on(event: "data", listener: (data: Buffer) => void): this;
-    on(event: "error", listener: (err: Error) => void): this;
-    on(event: string | symbol, listener: (...args) => void): this;
-    on(...args) {
-        return super.on.apply(this, args);
-    }
-
-    send(data: string | Buffer, cb: () => void): boolean {
-        return this.connected && this.socket.write(<any>data, cb);
+    close() {
+        this.closed = true;
+        this.socket.destroy();
     }
 
     get connected() {
-        return this.socket ? !this.socket.destroyed : false;
+        return this.socket
+            ? !this.socket.destroyed && !this.socket.connecting
+            : false;
     }
 
-    /**
-     * Gets a `net.Socket` instance connected to the server.
-     * @param timeout Default value is `5000`ms.
-     */
-    // async connect(timeout = 5000) {
+    connect(timeout = 5000) {
+        this.socket = new net.Socket();
 
-    // }
+        var write = this.socket.write;
+        var maxRetries = Math.ceil(timeout / 50);
+
+        this.socket.write = (...args) => {
+            // if the connection is ready, send message immediately, otherwise
+            // push them into a queue.
+            return this.connected
+                ? write.apply(this.socket, args)
+                : !!this.queue.push(args);
+        }
+
+        this.socket.on("connect", () => {
+            this.retries = 0;
+
+            // send out queued messages
+            let args: any[];
+            while (args = this.queue.shift()) {
+                this.socket.write.apply(this.socket, args);
+            }
+        }).on("error", async (err) => {
+            if (err["code"] == "ECONNREFUSED" || err["code"] == "ENOENT") {
+                if (this.retries < maxRetries) {
+                    // retry connect
+                    this.retries++;
+                    await this.tryConnect(this.managerPid);
+                }
+            } else if (this.isSocketResetError(err)) {
+                // if the connection is reset be the other peer, try to close
+                // it if it hasn't.
+                this.socket.destroyed || this.socket.emit("close", true);
+            }
+        }).on("close", async () => {
+            this.managerPid = void 0;
+
+            try {
+                // automatically re-connect when connection lost.
+                this.closed || await this.tryConnect();
+            } catch (err) {
+                this.socket.emit("error", err);
+            }
+        });
+
+        this.tryConnect();
+
+        return this.socket;
+    }
 
     private async bind(pid: number) {
         let server = net.createServer(this.connectionListener);
@@ -134,75 +151,34 @@ export class IPChannel extends EventEmitter {
         }
     }
 
-    private tryConnect(addr: string | number): Promise<net.Socket> {
-        return new Promise((resolve: (value: net.Socket) => void, reject) => {
-            if (!addr)
-                return resolve(null);
-
-            let conn = net.createConnection(<any>addr);
-
-            conn.once("error", (err) => {
-                if (err["code"] == "ECONNREFUSED" || err["code"] == "ENOENT") {
-                    resolve(null);
-                } else {
-                    reject(err);
-                }
-            }).once("connect", () => {
-                resolve(conn);
-            });
-        });
+    private isSocketResetError(err) {
+        return err instanceof Error
+            && (err["code"] == "ECONNRESET"
+                || /socket.*(ended|closed)/.test(err.message));
     }
 
-    private retryConnect(resolve, reject, timeout: number, pid: number) {
-        let conn: net.Socket,
-            retries = 0,
-            maxRetries = Math.ceil(timeout / 50),
-            timer = setInterval(async () => {
-                retries++;
-                conn = await this.getConnection(timeout, pid);
-
-                if (conn) {
-                    resolve(conn);
-                    clearInterval(timer);
-                } else if (retries === maxRetries) {
-                    clearInterval(timer);
-                    let err = new Error("failed to get connection after "
-                        + Math.round(timeout / 1000) + " seconds timeout");
-                    reject(err);
-                }
-            }, 50);
-    }
-
-    private async tryServe(pid: number, addr: string | number): Promise<net.Socket> {
+    private async tryServe(pid: number, addr: string | number): Promise<void> {
         try {
-            let server = await this.bind(pid);
-            if (server) {
-                let _addr = server.address();
-                addr = typeof _addr == "object" ? _addr.port : _addr;
-                return this.tryConnect(addr);
-            }
+            let server = await this.bind(pid),
+                _addr = server.address();
+
+            addr = typeof _addr == "object" ? _addr.port : _addr;
+            this.socket.connect(<any>addr);
         } catch (err) {
             if (err["code"] == "EADDRINUSE")
-                return this.tryConnect(addr);
-            else
-                throw err;
+                this.socket.connect(<any>addr);
         }
     }
 
-    private getConnection(timeout = 5000, pid?: number) {
-        return new Promise(async (resolve: (value: net.Socket) => void, reject) => {
-            pid = pid || await getManagerPid();
+    private async tryConnect(managerPid?: number) {
+        managerPid = managerPid || await getManagerPid();
+        this.managerPid = managerPid;
 
-            let addr = await this.getSocketAddr(pid),
-                conn: net.Socket;
-
-            conn = await this.tryConnect(addr);
-
-            if (!conn && pid === process.pid)
-                conn = await this.tryServe(pid, addr);
-
-            conn ? resolve(conn) : this.retryConnect(resolve, reject, timeout, pid);
-        });
+        let addr = await this.getSocketAddr(managerPid);
+        if (managerPid === process.pid)
+            await this.tryServe(managerPid, addr);
+        else
+            this.socket.connect(<any>addr);
     }
 }
 
@@ -210,14 +186,8 @@ export class IPChannel extends EventEmitter {
  * @param connectionListener A connection listener for `net.createServer()`.
  * @param timeout Default value is `5000`ms.
  */
-export function openChannel(connectionListener: (socket: net.Socket) => void, timeout = 5000) {
-    return new IPChannel(connectionListener, timeout);
-}
-
-export function isSocketResetError(err) {
-    return err instanceof Error
-        && (err["code"] == "ECONNRESET"
-            || /socket.*(ended|closed)/.test(err.message));
+export function openChannel(connectionListener: (socket: net.Socket) => void) {
+    return new IPChannel(connectionListener);
 }
 
 export default openChannel;

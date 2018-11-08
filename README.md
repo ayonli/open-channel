@@ -9,7 +9,7 @@
 
 Even if NodeJS provides its IPC communication abilities internally and there are
 a lot third party packages that provides IPC functionality. However, all of them
-require starting a IPC server or based on **cluster**/**child-process**, which 
+require starting a IPC server or based on **cluster**/**child_process**, which 
 are very unsuitable and not work with the following situations:
 
 1. The developer doesn't have authority to write and logic in the master process, 
@@ -24,6 +24,8 @@ these advantages:
     process (whether is will be run as child-process or individual process).
 2. If the IPC server is down, the program will automatically reship a new one 
     and keep communications continue.
+3. Sending messages even before the connection established, they will be queued
+    and sent once connection is ready.
 
 ## Example
 
@@ -38,42 +40,10 @@ var channel = openChannel(socket => {
     // the server.
 });
 
-(async () => {
-    // Gets a net.Socket instance connected to the server.
-    // you can pass an optional timeout argument in milliseconds to connect().
-    await channel.connect();
-    
-    // Put you logic here to communicate with the server.
-})();
+// Gets a net.Socket instance connected to the server.
+// you can pass an optional timeout argument in milliseconds to connect().
+// The connection will not be immediately ready, but you still can send messages.
+var socket = channel.connect();
+
+// Put you logic here to communicate with the server.
 ```
-
-## Warning
-
-During re-connection time period, there might be a down time before connection 
-reestablished, so it's much safer every time sending a message, check if the 
-connection is available (not `destroyed`). Or you can disable the default 
-re-connection operation and write your own.
-
-```javascript
-const { openChannel } = require("ipchannel");
-const merge = require("lodash/merge");
-
-// disable default re-connection functionality
-var channel = openChannel(/* ... */);
-channel.autoReconnect = false;
-
-(async () => {
-    var socket = await channel.connect();
-    
-    socket.on("error", async (err) => {
-        if (isSocketResetError(err)) {
-            merge(socket, channel.connect());
-        }
-    });
-})();
-```
-
-Be aware, a re-connection operation happens when the connection is reset, often
-means that server is down, when re-connecting, the program will automatically 
-check if it should reship the server. You don't need to concern what and how the
-program does these thing, just focus on your own communication logic.
