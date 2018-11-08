@@ -13,26 +13,29 @@ class IPChannel {
     constructor(connectionListener) {
         this.connectionListener = connectionListener;
         this.closed = false;
+        this.managerPid = void 0;
         this.retries = 0;
         this.queue = [];
     }
-    close() {
-        this.closed = true;
-        this.socket.destroy();
-    }
     get connected() {
         return this.socket
-            ? !this.socket.destroyed && !this.socket.connecting
+            ? !this.socket.destroyed && !this.socket.connecting && !this.closed
             : false;
     }
     connect(timeout = 5000) {
         this.socket = new net.Socket();
         var write = this.socket.write;
+        var destroy = this.socket.destroy;
         var maxRetries = Math.ceil(timeout / 50);
         this.socket.write = (...args) => {
             return this.connected
                 ? write.apply(this.socket, args)
                 : !!this.queue.push(args);
+        };
+        this.socket.destroy = (...args) => {
+            this.closed = true;
+            this.managerPid = void 0;
+            destroy.apply(this.socket, args);
         };
         this.socket.on("connect", () => {
             this.retries = 0;
@@ -51,7 +54,6 @@ class IPChannel {
                 this.socket.destroyed || this.socket.emit("close", true);
             }
         })).on("close", () => tslib_1.__awaiter(this, void 0, void 0, function* () {
-            this.managerPid = void 0;
             try {
                 this.closed || (yield this.tryConnect());
             }

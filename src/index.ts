@@ -9,22 +9,17 @@ export const isWin32 = process.platform == "win32";
 export const usingPort = isWin32 && cluster.isWorker;
 
 export class IPChannel {
-    private closed = false;
-    private managerPid: number;
+    closed = false;
+    private managerPid: number = void 0;
     private retries: number = 0;
     private queue: any[][] = [];
     private socket: net.Socket;
 
     constructor(private connectionListener: (socket: net.Socket) => void) { }
 
-    close() {
-        this.closed = true;
-        this.socket.destroy();
-    }
-
     get connected() {
         return this.socket
-            ? !this.socket.destroyed && !this.socket.connecting
+            ? !this.socket.destroyed && !this.socket.connecting && !this.closed
             : false;
     }
 
@@ -32,6 +27,7 @@ export class IPChannel {
         this.socket = new net.Socket();
 
         var write = this.socket.write;
+        var destroy = this.socket.destroy;
         var maxRetries = Math.ceil(timeout / 50);
 
         this.socket.write = (...args) => {
@@ -40,7 +36,13 @@ export class IPChannel {
             return this.connected
                 ? write.apply(this.socket, args)
                 : !!this.queue.push(args);
-        }
+        };
+
+        this.socket.destroy = (...args) => {
+            this.closed = true;
+            this.managerPid = void 0;
+            destroy.apply(this.socket, args);
+        };
 
         this.socket.on("connect", () => {
             this.retries = 0;
@@ -63,8 +65,6 @@ export class IPChannel {
                 this.socket.destroyed || this.socket.emit("close", true);
             }
         }).on("close", async () => {
-            this.managerPid = void 0;
-
             try {
                 // automatically re-connect when connection lost.
                 this.closed || await this.tryConnect();

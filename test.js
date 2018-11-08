@@ -1,7 +1,7 @@
 "use strict";
 
 const { openChannel } = require(".");
-const cluster = require("cluster");
+// const cluster = require("cluster");
 
 var channel = openChannel(socket => {
     let msg = [];
@@ -23,13 +23,16 @@ var channel = openChannel(socket => {
 // } else {
 
 var socket = channel.connect();
-var send = (data) => new Promise(resolve => socket.write(data, resolve));
 
-setInterval(() => {
+var timer = setInterval(() => {
     socket.destroyed || socket.write(String(process.pid))
 }, 1000);
 
 socket.on("data", buf => {
     console.log(buf.toString());
+    socket.destroy();
+    socket.unref();
+    clearInterval(timer);
+    console.log(channel)
 });
 // }
