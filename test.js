@@ -21,16 +21,15 @@ var channel = openChannel(socket => {
 //         let worker = cluster.fork();
 //     }
 // } else {
-(async () => {
-    var socket = await channel.connect();
-    var send = (data) => new Promise(resolve => socket.write(data, resolve));
 
-    setInterval(() => {
-        socket.destroyed || socket.write(String(process.pid))
-    }, 1000);
+var socket = channel.connect();
+var send = (data) => new Promise(resolve => socket.write(data, resolve));
 
-    socket.on("data", buf => {
-        console.log(buf.toString());
-    });
-})();
+setInterval(() => {
+    socket.destroyed || socket.write(String(process.pid))
+}, 1000);
+
+socket.on("data", buf => {
+    console.log(buf.toString());
+});
 // }
