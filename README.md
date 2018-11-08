@@ -41,7 +41,7 @@ var channel = openChannel(socket => {
 (async () => {
     // Gets a net.Socket instance connected to the server.
     // you can pass an optional timeout argument in milliseconds to connect().
-    var socket = await channel.connect();
+    await channel.connect();
     
     // Put you logic here to communicate with the server.
 })();
@@ -56,6 +56,7 @@ re-connection operation and write your own.
 
 ```javascript
 const { openChannel } = require("ipchannel");
+const merge = require("lodash/merge");
 
 // disable default re-connection functionality
 var channel = openChannel(/* ... */);

@@ -3,30 +3,63 @@ import * as os from "os";
 import * as path from "path";
 import * as cluster from "cluster";
 import * as fs from "fs-extra";
-import { getPid as getHostPid } from "first-officer";
-import merge = require("lodash/merge");
+import { getManagerPid } from "manager-process";
+import { EventEmitter } from 'events';
 
 export const isWin32 = process.platform == "win32";
 export const usingPort = isWin32 && cluster.isWorker;
 
-export class IPChannel {
-    autoReconnect = true;
+export class IPChannel extends EventEmitter {
+    socket: net.Socket;
 
-    constructor(private connectionListener: (socket: net.Socket) => void) { }
+    constructor(private connectionListener: (socket: net.Socket) => void, timeout = 5000) {
+        super();
+        let _this = this;
+
+        (async function connect() {
+            let isInit = !_this.socket;
+
+            _this.socket = await _this.getConnection(timeout);
+            _this.socket.on("connect", () => {
+                // emit connect event when the first time establish connection.
+                isInit && _this.emit("connect");
+            }).on("close", async () => {
+                // automatically re-connect when connection lost.
+                await connect();
+            }).on("error", err => {
+                if (isSocketResetError(err)) {
+                    _this.socket.destroyed || _this.socket.emit("close");
+                } else {
+                    _this.emit("error");
+                }
+            });
+        })();
+    }
+
+
+    on(event: "connect" | "close", listener: () => void): this;
+    on(event: "data", listener: (data: Buffer) => void): this;
+    on(event: "error", listener: (err: Error) => void): this;
+    on(event: string | symbol, listener: (...args) => void): this;
+    on(...args) {
+        return super.on.apply(this, args);
+    }
+
+    send(data: string | Buffer, cb: () => void): boolean {
+        return this.connected && this.socket.write(<any>data, cb);
+    }
+
+    get connected() {
+        return this.socket ? !this.socket.destroyed : false;
+    }
 
     /**
      * Gets a `net.Socket` instance connected to the server.
      * @param timeout Default value is `5000`ms.
      */
-    async connect(timeout = 5000) {
-        let socket = await this.getConnection(timeout);
+    // async connect(timeout = 5000) {
 
-        socket.on("error", async (err) => {
-            if (this.autoReconnect && isSocketResetError(err)) {
-                merge(socket, await this.getConnection(timeout));
-            }
-        });
-    }
+    // }
 
     private async bind(pid: number) {
         let server = net.createServer(this.connectionListener);
@@ -158,7 +191,7 @@ export class IPChannel {
 
     private getConnection(timeout = 5000, pid?: number) {
         return new Promise(async (resolve: (value: net.Socket) => void, reject) => {
-            pid = pid || await getHostPid();
+            pid = pid || await getManagerPid();
 
             let addr = await this.getSocketAddr(pid),
                 conn: net.Socket;
@@ -173,9 +206,12 @@ export class IPChannel {
     }
 }
 
-/** @param connectionListener A connection lister for `net.createServer()`. */
-export function openChannel(connectionListener: (socket: net.Socket) => void) {
-    return new IPChannel(connectionListener);
+/**
+ * @param connectionListener A connection listener for `net.createServer()`.
+ * @param timeout Default value is `5000`ms.
+ */
+export function openChannel(connectionListener: (socket: net.Socket) => void, timeout = 5000) {
+    return new IPChannel(connectionListener, timeout);
 }
 
 export function isSocketResetError(err) {

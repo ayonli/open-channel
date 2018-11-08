@@ -6,7 +6,7 @@ const os = require("os");
 const path = require("path");
 const cluster = require("cluster");
 const fs = require("fs-extra");
-const first_officer_1 = require("first-officer");
+const manager_process_1 = require("manager-process");
 const merge = require("lodash/merge");
 exports.isWin32 = process.platform == "win32";
 exports.usingPort = exports.isWin32 && cluster.isWorker;
@@ -18,11 +18,15 @@ class IPChannel {
     connect(timeout = 5000) {
         return tslib_1.__awaiter(this, void 0, void 0, function* () {
             let socket = yield this.getConnection(timeout);
-            socket.on("error", (err) => tslib_1.__awaiter(this, void 0, void 0, function* () {
-                if (this.autoReconnect && isSocketResetError(err)) {
+            socket.on("close", () => tslib_1.__awaiter(this, void 0, void 0, function* () {
+                if (this.autoReconnect) {
                     merge(socket, yield this.getConnection(timeout));
+                    console.log(socket);
                 }
-            }));
+            })).on("error", (err) => {
+                console.log(err);
+            });
+            return socket;
         });
     }
     bind(pid) {
@@ -139,7 +143,7 @@ class IPChannel {
     }
     getConnection(timeout = 5000, pid) {
         return new Promise((resolve, reject) => tslib_1.__awaiter(this, void 0, void 0, function* () {
-            pid = pid || (yield first_officer_1.getPid());
+            pid = pid || (yield manager_process_1.getManagerPid());
             let addr = yield this.getSocketAddr(pid), conn;
             conn = yield this.tryConnect(addr);
             if (!conn && pid === process.pid)

@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "description": "Serve an inter-process channel in the process itself.",
   "main": "dist/index.js",
+  "types": "src/index.ts",
   "scripts": {
     "test": "node test"
   },
@@ -25,13 +26,13 @@
   "homepage": "https://github.com/hyurl/ipchannel#readme",
   "devDependencies": {
     "@types/lodash": "^4.14.118",
-    "@types/node": "^10.12.2"
+    "@types/node": "^10.12.3"
   },
   "dependencies": {
     "@types/fs-extra": "^5.0.4",
-    "first-officer": "^0.1.2",
     "fs-extra": "^7.0.1",
     "lodash": "^4.17.11",
+    "manager-process": "^0.1.1",
     "tslib": "^1.9.3"
   }
 }
