@@ -19,7 +19,8 @@ class ProcessChannel {
     }
     get connected() {
         return this.socket
-            ? !this.socket.destroyed && !this.socket.connecting && !this.closed
+            ? (!this.socket.destroyed && !this.closed
+                && this.socket.readable && this.socket.writable)
             : false;
     }
     get state() {
@@ -35,10 +36,12 @@ class ProcessChannel {
                 ? write.apply(this.socket, args)
                 : !!this.queue.push(args);
         };
-        this.socket.destroy = (...args) => {
-            this.closed = true;
-            this.managerPid = void 0;
-            destroy.apply(this.socket, args);
+        this.socket.destroy = (err) => {
+            if (!err) {
+                this.closed = true;
+                this.managerPid = void 0;
+            }
+            destroy.call(this.socket, err);
         };
         this.socket.on("connect", () => {
             this.retries = 0;
@@ -54,7 +57,7 @@ class ProcessChannel {
                 }
             }
             else if (this.isSocketResetError(err)) {
-                this.socket.destroyed || this.socket.emit("close", true);
+                this.socket.destroyed || this.socket.emit("close", false);
             }
         })).on("close", () => tslib_1.__awaiter(this, void 0, void 0, function* () {
             try {
@@ -98,14 +101,14 @@ class ProcessChannel {
     }
     setPort(pid, port) {
         return tslib_1.__awaiter(this, void 0, void 0, function* () {
-            let dir = os.tmpdir() + "/.uipc", file = dir + "/" + pid;
+            let dir = os.tmpdir() + "/.open-channel", file = dir + "/" + pid;
             yield fs.ensureDir(dir);
             yield fs.writeFile(file, port, "utf8");
         });
     }
     getSocketAddr(pid) {
         return tslib_1.__awaiter(this, void 0, void 0, function* () {
-            let dir = os.tmpdir() + "/.uipc", file = dir + "/" + pid;
+            let dir = os.tmpdir() + "/.open-channel", file = dir + "/" + pid;
             if (!exports.usingPort) {
                 yield fs.ensureDir(dir);
                 return !exports.isWin32 ? file : path.join('\\\\?\\pipe', file);
@@ -122,7 +125,7 @@ class ProcessChannel {
     isSocketResetError(err) {
         return err instanceof Error
             && (err["code"] == "ECONNRESET"
-                || /socket.*(ended|closed)/.test(err.message));
+                || /socket.*(ended|closed)/i.test(err.message));
     }
     tryServe(pid, addr) {
         return tslib_1.__awaiter(this, void 0, void 0, function* () {

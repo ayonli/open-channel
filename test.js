@@ -1,38 +1,114 @@
 "use strict";
 
 const { openChannel } = require(".");
-// const cluster = require("cluster");
+const cluster = require("cluster");
+const assert = require("assert");
+const net = require("net");
+const { encode, decode } = require("encoded-buffer");
 
-var channel = openChannel(socket => {
-    let msg = [];
+var channel;
 
-    socket.on("data", buf => {
-        // msg.push(buf.toString());
-        console.log(buf.toString())
+describe("open channel", () => {
+    channel = openChannel(socket => {
+        socket.on("data", buf => {
+            try {
+                assert.strictEqual(buf.toString(), "Hello, World!");
+                socket.write("Hi, World!");
+            } catch (err) {
+                sendError(err);
+            }
+        });
+    });
 
-        socket.destroyed || socket.write(String(process.pid))
+    it("should open the channel as expected", () => {
+        assert.strictEqual(channel.connected, false);
     });
 });
 
-// if (cluster.isMaster) {
-//     var workers = [];
+if (cluster.isMaster) {
+    var errors = [];
 
-//     for (let i = 0; i < 4; i++) {
-//         let worker = cluster.fork();
-//     }
-// } else {
+    for (let i = 0; i < 4; i++) {
+        let worker = cluster.fork();
 
-var socket = channel.connect();
+        worker.on("message", (msg) => {
+            try { msg = decode(Buffer.from(msg))[0] } finally { }
+            if (msg instanceof Error) {
+                console.log(msg);
+                worker.kill();
+                errors.push(msg);
+            }
+        });
+    }
 
-var timer = setInterval(() => {
-    socket.destroyed || socket.write(String(process.pid))
-}, 1000);
+    setTimeout(() => {
+        if (errors.length) {
+            process.exit(1);
+        } else {
+            process.exit();
+        }
+    }, 5000);
+} else {
+    function sendError(err) {
+        return process.send(encode(err).toString());
+    }
 
-socket.on("data", buf => {
-    console.log(buf.toString());
-    socket.destroy();
-    socket.unref();
-    clearInterval(timer);
-    console.log(channel)
-});
-// }
+    describe("connect to the channel", () => {
+        var socket = channel.connect();
+
+        it("should return a net.Socket instance from channel.connect()", () => {
+            assert.ok(socket instanceof net.Socket);
+        });
+
+        it("should establish connection as expected", (done) => {
+            let test = () => {
+                if (channel.connected) {
+                    clearInterval(timer);
+                    try {
+                        assert.strictEqual(channel.state, "connected");
+                        assert.strictEqual(channel.connected, true);
+                        assert.strictEqual(channel.closed, false);
+                        assert.strictEqual(socket.connecting, false);
+                        assert.strictEqual(socket.destroyed, false);
+                        done();
+                    } catch (err) {
+                        done(err);
+                    }
+                }
+            };
+            let timer = setInterval(test, 4);
+            test();
+        });
+
+        it("should send message as expected", (done) => {
+            socket.write("Hello, World!", () => {
+                done();
+            });
+        });
+
+        it("should receive messages as expected", (done) => {
+            socket.on("data", buf => {
+                try {
+                    assert.strictEqual(buf.toString(), "Hi, World!");
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should close the channel as expected", (done) => {
+            try {
+                socket.destroy();
+                assert.strictEqual(socket.destroyed, true);
+                assert.strictEqual(channel.closed, true);
+                assert.strictEqual(channel.state, "closed");
+                assert.strictEqual(channel.connected, false);
+                done();
+            } catch (err) {
+                sendError(err);
+                done(err);
+            }
+        });
+    });
+}

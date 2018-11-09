@@ -24,7 +24,8 @@ export class ProcessChannel {
     /** Whether the channel is connected to the internal server. */
     get connected() {
         return this.socket
-            ? !this.socket.destroyed && !this.socket.connecting && !this.closed
+            ? (!this.socket.destroyed && !this.closed
+                && this.socket.readable && this.socket.writable)
             : false;
     }
 
@@ -55,10 +56,12 @@ export class ProcessChannel {
                 : !!this.queue.push(args);
         };
 
-        this.socket.destroy = (...args) => {
-            this.closed = true;
-            this.managerPid = void 0;
-            destroy.apply(this.socket, args);
+        this.socket.destroy = (err?: Error) => {
+            if (!err) {
+                this.closed = true;
+                this.managerPid = void 0;
+            }
+            destroy.call(this.socket, err);
         };
 
         this.socket.on("connect", () => {
@@ -79,11 +82,11 @@ export class ProcessChannel {
             } else if (this.isSocketResetError(err)) {
                 // if the connection is reset be the other peer, try to close
                 // it if it hasn't.
-                this.socket.destroyed || this.socket.emit("close", true);
+                this.socket.destroyed || this.socket.emit("close", false);
             }
         }).on("close", async () => {
             try {
-                // automatically re-connect when connection lost.
+                // automatically re-connect when connection lost unexpectively.
                 this.closed || await this.tryConnect();
             } catch (err) {
                 this.socket.emit("error", err);
@@ -137,7 +140,7 @@ export class ProcessChannel {
     }
 
     private async setPort(pid: number, port: number) {
-        let dir = os.tmpdir() + "/.uipc",
+        let dir = os.tmpdir() + "/.open-channel",
             file = dir + "/" + pid;
 
         // Save the port to a temp file, so other processes can read the file to
@@ -147,7 +150,7 @@ export class ProcessChannel {
     }
 
     private async getSocketAddr(pid: number): Promise<string | number> {
-        let dir = os.tmpdir() + "/.uipc",
+        let dir = os.tmpdir() + "/.open-channel",
             file = dir + "/" + pid;
 
         if (!usingPort) {
@@ -168,7 +171,7 @@ export class ProcessChannel {
     private isSocketResetError(err) {
         return err instanceof Error
             && (err["code"] == "ECONNRESET"
-                || /socket.*(ended|closed)/.test(err.message));
+                || /socket.*(ended|closed)/i.test(err.message));
     }
 
     private async tryServe(pid: number, addr: string | number): Promise<void> {
