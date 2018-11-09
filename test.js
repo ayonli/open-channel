@@ -67,7 +67,6 @@ if (cluster.isMaster) {
                     try {
                         assert.strictEqual(channel.state, "connected");
                         assert.strictEqual(channel.connected, true);
-                        assert.strictEqual(channel.closed, false);
                         assert.strictEqual(socket.connecting, false);
                         assert.strictEqual(socket.destroyed, false);
                         done();
@@ -101,7 +100,6 @@ if (cluster.isMaster) {
             try {
                 socket.destroy();
                 assert.strictEqual(socket.destroyed, true);
-                assert.strictEqual(channel.closed, true);
                 assert.strictEqual(channel.state, "closed");
                 assert.strictEqual(channel.connected, false);
                 done();
