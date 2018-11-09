@@ -44,9 +44,10 @@ class ProcessChannel {
                 let err = args[0];
                 if (err["code"] == "ECONNREFUSED" || err["code"] == "ENOENT") {
                     if (this.retries < maxRetries) {
-                        this.retries++;
-                        this.tryConnect(this.managerPid);
-                        return true;
+                        return !!setTimeout(() => {
+                            this.retries++;
+                            this.tryConnect(this.managerPid);
+                        }, 50);
                     }
                     else {
                         return emit.call(this.socket, event, err);

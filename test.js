@@ -47,7 +47,7 @@ if (cluster.isMaster) {
         } else {
             process.exit();
         }
-    }, 5000);
+    }, 2000);
 } else {
     function sendError(err) {
         return process.send(encode(err).toString());
