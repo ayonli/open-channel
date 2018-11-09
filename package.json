@@ -36,5 +36,8 @@
     "lodash": "^4.17.11",
     "manager-process": "^0.1.2",
     "tslib": "^1.9.3"
+  },
+  "engines": {
+    "node": ">=6"
   }
 }
