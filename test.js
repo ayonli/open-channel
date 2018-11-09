@@ -1,29 +1,9 @@
 "use strict";
 
-const { openChannel } = require(".");
 const cluster = require("cluster");
 const assert = require("assert");
 const net = require("net");
 const { encode, decode } = require("encoded-buffer");
-
-var channel;
-
-describe("open channel", () => {
-    channel = openChannel(socket => {
-        socket.on("data", buf => {
-            try {
-                assert.strictEqual(buf.toString(), "Hello, World!");
-                socket.write("Hi, World!");
-            } catch (err) {
-                sendError(err);
-            }
-        });
-    });
-
-    it("should open the channel as expected", () => {
-        assert.strictEqual(channel.connected, false);
-    });
-});
 
 if (cluster.isMaster) {
     var errors = [];
@@ -49,6 +29,26 @@ if (cluster.isMaster) {
         }
     }, 2000);
 } else {
+    const { openChannel } = require(".");
+    var channel;
+
+    describe("open channel", () => {
+        channel = openChannel(socket => {
+            socket.on("data", buf => {
+                try {
+                    assert.strictEqual(buf.toString(), "Hello, World!");
+                    socket.write("Hi, World!");
+                } catch (err) {
+                    sendError(err);
+                }
+            });
+        });
+
+        it("should open the channel as expected", () => {
+            assert.strictEqual(channel.connected, false);
+        });
+    });
+
     function sendError(err) {
         return process.send(encode(err).toString());
     }
