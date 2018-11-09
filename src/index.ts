@@ -10,10 +10,10 @@ export const usingPort = isWin32 && cluster.isWorker;
 
 export class ProcessChannel {
     /**
-     * Whether the channel is closed, once closed, no more messages should be 
-     * sent.
+     * Returns the status of the channel, which will either be *`initiated`, 
+     * `connecting`, `connected` or `closed`.
      */
-    closed = false;
+    state: "initiated" | "connecting" | "connected" | "closed" = "initiated";
     private managerPid: number = void 0;
     private retries: number = 0;
     private queue: any[][] = [];
@@ -23,18 +23,7 @@ export class ProcessChannel {
 
     /** Whether the channel is connected to the internal server. */
     get connected() {
-        return this.socket
-            ? (!this.socket.destroyed && !this.closed
-                && this.socket.readable && this.socket.writable)
-            : false;
-    }
-
-    /**
-     * Returns the status of the channel, which will either be `connecting`, 
-     * `connected` or `closed`.
-     */
-    get state(): "connecting" | "connected" | "closed" {
-        return this.connected ? "connected" : this.closed ? "closed" : "connecting";
+        return this.state == "connected";
     }
 
     /**
@@ -43,6 +32,7 @@ export class ProcessChannel {
      */
     connect(timeout = 5000) {
         this.socket = new net.Socket();
+        this.state = "connecting";
 
         var write = this.socket.write;
         var destroy = this.socket.destroy;
@@ -58,7 +48,7 @@ export class ProcessChannel {
 
         this.socket.destroy = (err?: Error) => {
             if (!err) {
-                this.closed = true;
+                this.state = "closed";
                 this.managerPid = void 0;
             }
             destroy.call(this.socket, err);
@@ -66,6 +56,7 @@ export class ProcessChannel {
 
         this.socket.on("connect", () => {
             this.retries = 0;
+            this.state = "connected";
 
             // send out queued messages
             let args: any[];
@@ -87,7 +78,7 @@ export class ProcessChannel {
         }).on("close", async () => {
             try {
                 // automatically re-connect when connection lost unexpectively.
-                this.closed || await this.tryConnect();
+                this.state == "closed" || await this.tryConnect();
             } catch (err) {
                 this.socket.emit("error", err);
             }

@@ -61,13 +61,10 @@ var socket = channel.connect();
     - `timeout` Default value is `5000`ms.
 
 - `channel.state: string` Returns the status of the channel, which will either 
-    be `connecting`, `connected` or `closed`.
+    be `initiated`, `connecting`, `connected` or `closed`.
 
 - `channel.connected: boolean` Whether the channel is connected to the internal 
     server.
-
-- `channel.closed: boolean` Whether the channel is closed, once closed, no more 
-    messages should be sent.
 
 - `socket.write()` The client side write method has been re-written to implement
     sending messages even when the channel state is connecting.
