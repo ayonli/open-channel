@@ -62,7 +62,8 @@ class ProcessChannel {
             }
             else if (event == "close") {
                 try {
-                    this.state == "closed" || this.tryConnect();
+                    if (this.state != "connecting" && this.state != "closed")
+                        this.tryConnect();
                     return true;
                 }
                 catch (err) {

@@ -82,7 +82,9 @@ export class ProcessChannel {
                 try {
                     // automatically re-connect when connection lost 
                     // unexpectively.
-                    this.state == "closed" || this.tryConnect();
+                    if (this.state != "connecting" && this.state != "closed")
+                        this.tryConnect();
+
                     return true;
                 } catch (err) {
                     return emit.call(this.socket, "error", err);
