@@ -8,7 +8,7 @@ const { encode, decode } = require("encoded-buffer");
 if (cluster.isMaster) {
     var errors = [];
 
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < 2; i++) {
         let worker = cluster.fork();
 
         worker.on("message", (msg) => {
@@ -27,13 +27,18 @@ if (cluster.isMaster) {
         } else {
             process.exit();
         }
-    }, 2000);
+    }, 3000);
 } else {
-    const { openChannel } = require(".");
+    const { openChannel, ProcessChannel } = require(".");
+    /** @type {ProcessChannel} */
     var channel;
 
+    function sendError(err) {
+        return process.send(encode(err).toString());
+    }
+
     describe("open channel", () => {
-        channel = openChannel(socket => {
+        var listener = socket => {
             socket.on("data", buf => {
                 try {
                     assert.strictEqual(buf.toString(), "Hello, World!");
@@ -42,25 +47,50 @@ if (cluster.isMaster) {
                     sendError(err);
                 }
             });
+        };
+        channel = openChannel(listener);
+
+        it("should open the default channel as expected", (done) => {
+            try {
+                assert.strictEqual(channel.name, "open-channel");
+                assert.strictEqual(channel.connected, false);
+                assert.strictEqual(channel.connectionListener, listener);
+                done();
+            } catch (err) {
+                sendError(err);
+                done(err);
+            }
         });
 
-        it("should open the channel as expected", () => {
-            assert.strictEqual(channel.connected, false);
+        it("should open a channel with a custom name as expected", (done) => {
+            try {
+                var listener = socket => { };
+                var channel1 = openChannel("my-channel", listener);
+                assert.strictEqual(channel1.name, "my-channel");
+                assert.strictEqual(channel1.connectionListener, listener);
+                done();
+            } catch (err) {
+                sendError(err);
+                done(err);
+            }
         });
     });
-
-    function sendError(err) {
-        return process.send(encode(err).toString());
-    }
 
     describe("connect to the channel", () => {
         var socket = channel.connect();
 
-        it("should return a net.Socket instance from channel.connect()", () => {
-            assert.ok(socket instanceof net.Socket);
+        it("should return a net.Socket instance from channel.connect()", (done) => {
+            try {
+                assert.ok(socket instanceof net.Socket);
+                done();
+            } catch (err) {
+                sendError(err);
+                done(err);
+            }
         });
 
         it("should establish connection as expected", (done) => {
+            let retries = 0;
             let test = () => {
                 if (channel.connected) {
                     clearInterval(timer);
@@ -71,11 +101,18 @@ if (cluster.isMaster) {
                         assert.strictEqual(socket.destroyed, false);
                         done();
                     } catch (err) {
+                        sendError(err);
                         done(err);
                     }
+                } else if (retries == 20) {
+                    let err = new Error(`cannot connect the channel: ${channel.name}`);
+                    sendError(err);
+                    done(err);
+                } else {
+                    retries++;
                 }
             };
-            let timer = setInterval(test, 4);
+            let timer = setInterval(test, 50);
             test();
         });
 
@@ -91,6 +128,7 @@ if (cluster.isMaster) {
                     assert.strictEqual(buf.toString(), "Hi, World!");
                     done();
                 } catch (err) {
+                    sendError(err);
                     done(err);
                 }
             });

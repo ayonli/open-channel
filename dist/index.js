@@ -10,7 +10,8 @@ const manager_process_1 = require("manager-process");
 exports.isWin32 = process.platform == "win32";
 exports.usingPort = exports.isWin32 && cluster.isWorker;
 class ProcessChannel {
-    constructor(connectionListener) {
+    constructor(name, connectionListener) {
+        this.name = name;
         this.connectionListener = connectionListener;
         this.state = "initiated";
         this.managerPid = void 0;
@@ -118,14 +119,14 @@ class ProcessChannel {
     }
     setPort(pid, port) {
         return tslib_1.__awaiter(this, void 0, void 0, function* () {
-            let dir = os.tmpdir() + "/.open-channel", file = dir + "/" + pid;
+            let dir = os.tmpdir() + `/.${this.name}`, file = dir + "/" + pid;
             yield fs.ensureDir(dir);
             yield fs.writeFile(file, port, "utf8");
         });
     }
     getSocketAddr(pid) {
         return tslib_1.__awaiter(this, void 0, void 0, function* () {
-            let dir = os.tmpdir() + "/.open-channel", file = dir + "/" + pid;
+            let dir = os.tmpdir() + `/.${this.name}`, file = dir + "/" + pid;
             if (!exports.usingPort) {
                 yield fs.ensureDir(dir);
                 return !exports.isWin32 ? file : path.join('\\\\?\\pipe', file);
@@ -170,8 +171,13 @@ class ProcessChannel {
     }
 }
 exports.ProcessChannel = ProcessChannel;
-function openChannel(connectionListener) {
-    return new ProcessChannel(connectionListener);
+function openChannel(name, listener = null) {
+    if (typeof name == "function") {
+        return new ProcessChannel("open-channel", name);
+    }
+    else {
+        return new ProcessChannel(name, listener);
+    }
 }
 exports.openChannel = openChannel;
 exports.default = openChannel;

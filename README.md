@@ -54,6 +54,9 @@ var socket = channel.connect();
 ## API
 
 - `openChannel(connectionListener: (socket: net.Socket) => void): ProcessChannel`
+- `openChannel(name: string, connectionListener: (socket: net.Socket) => void): ProcessChannel`
+    - `name` The name of the channel. It's required to set a unique name of the 
+        channel when you have multiple channels on the same machine.
     - `connectionListener` is set for `net.createServer()`.
 
 - `channel.connect(timeout?: number): net.Socket` Gets the socket client that 

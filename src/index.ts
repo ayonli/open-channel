@@ -9,6 +9,8 @@ export const isWin32 = process.platform == "win32";
 export const usingPort = isWin32 && cluster.isWorker;
 
 export class ProcessChannel {
+    /** The name of the channel. */
+    // name: string;
     /**
      * Returns the status of the channel, which will either be *`initiated`, 
      * `connecting`, `connected` or `closed`.
@@ -19,7 +21,11 @@ export class ProcessChannel {
     private queue: any[][] = [];
     private socket: net.Socket;
 
-    constructor(private connectionListener: (socket: net.Socket) => void) { }
+    /**
+     * @param name The name of the channel.
+     * @param connectionListener Set for `net.createServer()`.
+     */
+    constructor(private name: string, private connectionListener: (socket: net.Socket) => void) { }
 
     /** Whether the channel is connected to the internal server. */
     get connected() {
@@ -156,7 +162,7 @@ export class ProcessChannel {
     }
 
     private async setPort(pid: number, port: number) {
-        let dir = os.tmpdir() + "/.open-channel",
+        let dir = os.tmpdir() + `/.${this.name}`,
             file = dir + "/" + pid;
 
         // Save the port to a temp file, so other processes can read the file to
@@ -166,7 +172,7 @@ export class ProcessChannel {
     }
 
     private async getSocketAddr(pid: number): Promise<string | number> {
-        let dir = os.tmpdir() + "/.open-channel",
+        let dir = os.tmpdir() + `/.${this.name}`,
             file = dir + "/" + pid;
 
         if (!usingPort) {
@@ -223,8 +229,14 @@ export class ProcessChannel {
  * @param connectionListener A connection listener for `net.createServer()`.
  * @param timeout Default value is `5000`ms.
  */
-export function openChannel(connectionListener: (socket: net.Socket) => void) {
-    return new ProcessChannel(connectionListener);
+export function openChannel(connectionListener: (socket: net.Socket) => void);
+export function openChannel(name: string, connectionListener: (socket: net.Socket) => void);
+export function openChannel(name, listener = null) {
+    if (typeof name == "function") {
+        return new ProcessChannel("open-channel", name);
+    } else {
+        return new ProcessChannel(name, listener);
+    }
 }
 
 export default openChannel;
