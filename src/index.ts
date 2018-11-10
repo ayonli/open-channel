@@ -229,8 +229,8 @@ export class ProcessChannel {
  * @param connectionListener A connection listener for `net.createServer()`.
  * @param timeout Default value is `5000`ms.
  */
-export function openChannel(connectionListener: (socket: net.Socket) => void);
-export function openChannel(name: string, connectionListener: (socket: net.Socket) => void);
+export function openChannel(connectionListener: (socket: net.Socket) => void): ProcessChannel;
+export function openChannel(name: string, connectionListener: (socket: net.Socket) => void): ProcessChannel;
 export function openChannel(name, listener = null) {
     if (typeof name == "function") {
         return new ProcessChannel("open-channel", name);
