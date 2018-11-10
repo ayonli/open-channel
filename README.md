@@ -63,6 +63,8 @@ var socket = channel.connect();
     will connect to the internal server.
     - `timeout` Default value is `5000`ms.
 
+- `channel.name: string` The same name passed to `openChannel()`.
+
 - `channel.state: string` Returns the status of the channel, which will either 
     be `initiated`, `connecting`, `connected` or `closed`.
 

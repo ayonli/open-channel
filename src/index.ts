@@ -25,7 +25,7 @@ export class ProcessChannel {
      * @param name The name of the channel.
      * @param connectionListener Set for `net.createServer()`.
      */
-    constructor(private name: string, private connectionListener: (socket: net.Socket) => void) { }
+    constructor(readonly name: string, private connectionListener: (socket: net.Socket) => void) { }
 
     /** Whether the channel is connected to the internal server. */
     get connected() {
