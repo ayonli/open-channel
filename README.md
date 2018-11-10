@@ -25,8 +25,8 @@ these advantages:
 3. Automatically switch the best protocol to transmit, on Unit, it uses domain
     socket, on Windows, it uses named pipe by default and changed to net port 
     when in cluster mode.
-4. If the IPC server is down, the program will automatically reship a new one 
-    and keep communications continue.
+4. Automatically reconnect and resend messages if the connection is lost, always
+    keep communications ongoing.
 5. Sending messages even before the connection established, they will be queued
     and sent once connection is ready.
 
