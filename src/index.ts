@@ -4,6 +4,7 @@ import * as path from "path";
 import * as cluster from "cluster";
 import * as fs from "fs-extra";
 import { getManagerPid } from "manager-process";
+import isSocketResetError = require("is-socket-reset-error");
 
 export const isWin32 = process.platform == "win32";
 export const usingPort = isWin32 && cluster.isWorker;
@@ -77,7 +78,7 @@ export class ProcessChannel {
                     } else {
                         return emit.call(this.socket, event, err);
                     }
-                } else if (this.isSocketResetError(err)) {
+                } else if (isSocketResetError(err)) {
                     // if the connection is reset be the other peer, try to 
                     // close it if it hasn't.
                     this.socket.destroyed || this.socket.emit("close", false);
@@ -188,12 +189,6 @@ export class ProcessChannel {
         } catch (err) {
             return 0;
         }
-    }
-
-    private isSocketResetError(err) {
-        return err instanceof Error
-            && (err["code"] == "ECONNRESET"
-                || /socket.*(ended|closed)/i.test(err.message));
     }
 
     private async tryServe(pid: number, addr: string | number): Promise<void> {

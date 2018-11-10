@@ -7,6 +7,7 @@ const path = require("path");
 const cluster = require("cluster");
 const fs = require("fs-extra");
 const manager_process_1 = require("manager-process");
+const isSocketResetError = require("is-socket-reset-error");
 exports.isWin32 = process.platform == "win32";
 exports.usingPort = exports.isWin32 && cluster.isWorker;
 class ProcessChannel {
@@ -54,7 +55,7 @@ class ProcessChannel {
                         return emit.call(this.socket, event, err);
                     }
                 }
-                else if (this.isSocketResetError(err)) {
+                else if (isSocketResetError(err)) {
                     this.socket.destroyed || this.socket.emit("close", false);
                     return true;
                 }
@@ -139,11 +140,6 @@ class ProcessChannel {
                 return 0;
             }
         });
-    }
-    isSocketResetError(err) {
-        return err instanceof Error
-            && (err["code"] == "ECONNRESET"
-                || /socket.*(ended|closed)/i.test(err.message));
     }
     tryServe(pid, addr) {
         return tslib_1.__awaiter(this, void 0, void 0, function* () {
