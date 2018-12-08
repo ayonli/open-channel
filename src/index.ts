@@ -51,7 +51,7 @@ export class ProcessChannel {
         this.socket.write = (...args) => {
             // if the connection is ready, send message immediately, otherwise
             // push them into a queue.
-            return this.state !== "connecting"
+            return this.connected
                 ? write.apply(this.socket, args)
                 : !!this.queue.push(args);
         };

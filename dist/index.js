@@ -30,7 +30,7 @@ class ProcessChannel {
         var destroy = this.socket.destroy;
         var emit = this.socket.emit;
         this.socket.write = (...args) => {
-            return this.state !== "connecting"
+            return this.connected
                 ? write.apply(this.socket, args)
                 : !!this.queue.push(args);
         };

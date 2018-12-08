@@ -12,11 +12,14 @@ if (cluster.isMaster) {
         let worker = cluster.fork();
 
         worker.on("message", (msg) => {
-            try { msg = decode(Buffer.from(msg))[0] } finally { }
-            if (msg instanceof Error) {
-                console.log(msg);
-                worker.kill();
-                errors.push(msg);
+            try {
+                msg = decode(Buffer.from(msg))[0];
+            } finally {
+                if (msg instanceof Error) {
+                    console.log(msg);
+                    worker.kill();
+                    errors.push(msg);
+                }
             }
         });
     }
@@ -33,9 +36,9 @@ if (cluster.isMaster) {
     /** @type {ProcessChannel} */
     var channel;
 
-    function sendError(err) {
+    let sendError = function (err) {
         return process.send(encode(err).toString());
-    }
+    };
 
     describe("open channel", () => {
         var listener = socket => {
@@ -64,7 +67,7 @@ if (cluster.isMaster) {
 
         it("should open a channel with a custom name as expected", (done) => {
             try {
-                var listener = socket => { };
+                var listener = () => { };
                 var channel1 = openChannel("my-channel", listener);
                 assert.strictEqual(channel1.name, "my-channel");
                 assert.strictEqual(channel1.connectionListener, listener);
