@@ -139,16 +139,17 @@ export class ProcessChannel {
                 server.listen(() => resolve());
             } else {
                 // bind to a Unix domain socket or Windows named pipe
-                let path = <string>await this.getSocketAddr(pid, false);
+                let path = <string>await this.getSocketAddr(pid);
+                let _path = isWin32 ? path.slice("\\\\?\\pipe".length) : path;
 
-                if (await fs.pathExists(path)) {
+                if (await fs.pathExists(_path)) {
                     // When all the connection request run asynchronously, there
                     // is no guarantee that this procedure will run as expected 
                     // since anther process may delete the file before the 
                     // current process do. So must put the 'unlink' operation in
                     // a try block, and when fail, it will not cause the 
                     // process to terminate.
-                    try { await fs.unlink(path); } finally { }
+                    try { await fs.unlink(_path); } finally { }
                 }
 
                 server.listen(path, () => resolve());
@@ -172,14 +173,14 @@ export class ProcessChannel {
         await fs.writeFile(file, port, "utf8");
     }
 
-    private async getSocketAddr(pid: number, pipe = true): Promise<string | number> {
+    private async getSocketAddr(pid: number): Promise<string | number> {
         let dir = os.tmpdir() + `/.${this.name}`,
             file = dir + "/" + pid;
 
         if (!usingPort) {
             // Use domain socket on Unix and named pipe on Windows.
             await fs.ensureDir(dir);
-            return !isWin32 || !pipe ? file : path.join('\\\\?\\pipe', file);
+            return !isWin32 ? file : path.join('\\\\?\\pipe', file);
         }
 
         try {

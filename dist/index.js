@@ -102,10 +102,11 @@ class ProcessChannel {
                     server.listen(() => resolve());
                 }
                 else {
-                    let path = yield this.getSocketAddr(pid, false);
-                    if (yield fs.pathExists(path)) {
+                    let path = yield this.getSocketAddr(pid);
+                    let _path = exports.isWin32 ? path.slice("\\\\?\\pipe".length) : path;
+                    if (yield fs.pathExists(_path)) {
                         try {
-                            yield fs.unlink(path);
+                            yield fs.unlink(_path);
                         }
                         finally { }
                     }
@@ -125,12 +126,12 @@ class ProcessChannel {
             yield fs.writeFile(file, port, "utf8");
         });
     }
-    getSocketAddr(pid, pipe = true) {
+    getSocketAddr(pid) {
         return tslib_1.__awaiter(this, void 0, void 0, function* () {
             let dir = os.tmpdir() + `/.${this.name}`, file = dir + "/" + pid;
             if (!exports.usingPort) {
                 yield fs.ensureDir(dir);
-                return !exports.isWin32 || !pipe ? file : path.join('\\\\?\\pipe', file);
+                return !exports.isWin32 ? file : path.join('\\\\?\\pipe', file);
             }
             try {
                 let data = yield fs.readFile(file, "utf8");
