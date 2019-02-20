@@ -139,7 +139,7 @@ export class ProcessChannel {
                 server.listen(() => resolve());
             } else {
                 // bind to a Unix domain socket or Windows named pipe
-                let path = <string>await this.getSocketAddr(pid);
+                let path = <string>await this.getSocketAddr(pid, false);
 
                 if (await fs.pathExists(path)) {
                     // When all the connection request run asynchronously, there
@@ -172,14 +172,14 @@ export class ProcessChannel {
         await fs.writeFile(file, port, "utf8");
     }
 
-    private async getSocketAddr(pid: number): Promise<string | number> {
+    private async getSocketAddr(pid: number, pipe = true): Promise<string | number> {
         let dir = os.tmpdir() + `/.${this.name}`,
             file = dir + "/" + pid;
 
         if (!usingPort) {
             // Use domain socket on Unix and named pipe on Windows.
             await fs.ensureDir(dir);
-            return !isWin32 ? file : path.join('\\\\?\\pipe', file);
+            return !isWin32 || !pipe ? file : path.join('\\\\?\\pipe', file);
         }
 
         try {
