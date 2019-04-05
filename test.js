@@ -55,6 +55,7 @@ if (cluster.isMaster) {
 
         it("should open the default channel as expected", (done) => {
             try {
+                assert.ok(channel instanceof ProcessChannel);
                 assert.strictEqual(channel.name, "open-channel");
                 assert.strictEqual(channel.connected, false);
                 assert.strictEqual(channel.connectionListener, listener);

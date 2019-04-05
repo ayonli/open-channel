@@ -5,6 +5,7 @@ import * as cluster from "cluster";
 import * as fs from "fs-extra";
 import { getManagerPid } from "manager-process";
 import isSocketResetError = require("is-socket-reset-error");
+import isConnectRefusedError = require("is-connect-refused-error");
 
 export const isWin32 = process.platform == "win32";
 export const usingPort = isWin32 && cluster.isWorker;
@@ -48,7 +49,7 @@ export class ProcessChannel {
         var destroy = this.socket.destroy;
         var emit = this.socket.emit;
 
-        this.socket.write = (...args) => {
+        this.socket.write = (...args: any[]) => {
             // if the connection is ready, send message immediately, otherwise
             // push them into a queue.
             return this.connected
@@ -64,27 +65,23 @@ export class ProcessChannel {
             destroy.call(this.socket, err);
         };
 
-        this.socket.emit = (event: string | symbol, ...args) => {
+        this.socket.emit = (event: string | symbol, ...args: any[]) => {
             if (event == "error") {
                 let err: Error = args[0];
 
-                if (err["code"] == "ECONNREFUSED" || err["code"] == "ENOENT") {
+                if (isConnectRefusedError(err)) {
                     if (this.retries < maxRetries) {
                         return !!setTimeout(() => {
                             // retry connect
                             this.retries++;
                             this.tryConnect(this.managerPid);
                         }, 50);
-                    } else {
-                        return emit.call(this.socket, event, err);
                     }
                 } else if (isSocketResetError(err)) {
                     // if the connection is reset be the other peer, try to 
                     // close it if it hasn't.
                     this.socket.destroyed || this.socket.emit("close", false);
                     return true;
-                } else {
-                    return emit.call(this.socket, event, err);
                 }
             } else if (event == "close") {
                 try {
@@ -97,11 +94,9 @@ export class ProcessChannel {
                 } catch (err) {
                     return emit.call(this.socket, "error", err);
                 }
-            } else {
-                emit.call(this.socket, event, ...args);
             }
 
-            return true;
+            return emit.call(this.socket, event, ...args);
         }
         /* hack internal API */
 
@@ -136,7 +131,7 @@ export class ProcessChannel {
 
             if (usingPort) {
                 // listen a random port number
-                server.listen(() => resolve());
+                server.listen(resolve);
             } else {
                 // bind to a Unix domain socket or Windows named pipe
                 let path = <string>await this.getSocketAddr(pid);
@@ -152,7 +147,7 @@ export class ProcessChannel {
                     try { await fs.unlink(_path); } finally { }
                 }
 
-                server.listen(path, () => resolve());
+                server.listen(path, resolve);
             }
         });
 

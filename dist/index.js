@@ -8,6 +8,7 @@ const cluster = require("cluster");
 const fs = require("fs-extra");
 const manager_process_1 = require("manager-process");
 const isSocketResetError = require("is-socket-reset-error");
+const isConnectRefusedError = require("is-connect-refused-error");
 exports.isWin32 = process.platform == "win32";
 exports.usingPort = exports.isWin32 && cluster.isWorker;
 class ProcessChannel {
@@ -44,23 +45,17 @@ class ProcessChannel {
         this.socket.emit = (event, ...args) => {
             if (event == "error") {
                 let err = args[0];
-                if (err["code"] == "ECONNREFUSED" || err["code"] == "ENOENT") {
+                if (isConnectRefusedError(err)) {
                     if (this.retries < maxRetries) {
                         return !!setTimeout(() => {
                             this.retries++;
                             this.tryConnect(this.managerPid);
                         }, 50);
                     }
-                    else {
-                        return emit.call(this.socket, event, err);
-                    }
                 }
                 else if (isSocketResetError(err)) {
                     this.socket.destroyed || this.socket.emit("close", false);
                     return true;
-                }
-                else {
-                    return emit.call(this.socket, event, err);
                 }
             }
             else if (event == "close") {
@@ -73,10 +68,7 @@ class ProcessChannel {
                     return emit.call(this.socket, "error", err);
                 }
             }
-            else {
-                emit.call(this.socket, event, ...args);
-            }
-            return true;
+            return emit.call(this.socket, event, ...args);
         };
         this.socket.on("connect", () => {
             this.retries = 0;
@@ -99,7 +91,7 @@ class ProcessChannel {
                     err["code"] == "EADDRINUSE" ? reject(err) : resolve();
                 });
                 if (exports.usingPort) {
-                    server.listen(() => resolve());
+                    server.listen(resolve);
                 }
                 else {
                     let path = yield this.getSocketAddr(pid);
@@ -110,7 +102,7 @@ class ProcessChannel {
                         }
                         finally { }
                     }
-                    server.listen(path, () => resolve());
+                    server.listen(path, resolve);
                 }
             }));
             if (exports.usingPort) {
