@@ -36,7 +36,7 @@
     "is-connect-refused-error": "^0.1.0",
     "is-socket-reset-error": "^0.1.1",
     "lodash": "^4.17.11",
-    "manager-process": "^0.1.2",
+    "manager-process": "^0.1.3",
     "tslib": "^1.9.3"
   },
   "engines": {
