@@ -97,7 +97,7 @@ export class ProcessChannel {
             }
 
             return emit.call(this.socket, event, ...args);
-        }
+        };
         /* hack internal API */
 
         this.socket.on("connect", () => {
@@ -119,7 +119,7 @@ export class ProcessChannel {
     private async bind(pid: number) {
         let server = net.createServer(this.connectionListener);
 
-        await new Promise(async (resolve, reject) => {
+        await new Promise<void>(async (resolve, reject) => {
             server.once("error", err => {
                 server.close();
                 server.unref();

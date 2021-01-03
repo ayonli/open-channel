@@ -1,6 +1,6 @@
 {
   "name": "open-channel",
-  "version": "0.1.11",
+  "version": "0.1.12",
   "description": "A self-hosting inter-process communication channel for NodeJS.",
   "main": "dist/index.js",
   "types": "src/index.ts",
@@ -26,7 +26,7 @@
   "homepage": "https://github.com/hyurl/open-channel#readme",
   "devDependencies": {
     "@types/lodash": "^4.14.118",
-    "@types/node": "^10.12.5",
+    "@types/node": "^14.14.19",
     "encoded-buffer": "^0.2.1",
     "mocha": "^5.2.0"
   },
